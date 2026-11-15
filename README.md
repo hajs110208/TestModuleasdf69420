@@ -5,21 +5,23 @@ Sample **LSPosed** module that makes a target app load a class from the module i
 ## How it works
 
 1. `ModuleConfig` names the target package and the classes to replace.
-2. The module APK contains a class with the **same fully qualified name** for each one
-   (sample: `com.example.targetapp.util.Greeter`).
-3. When the target app starts, `MainHook` hooks `ClassLoader.loadClass(String)`. Requests for a
-   replaced name on the app's class loader are answered from the module APK through a
-   child-first loader, which still resolves every other class from the app.
+2. For each one, the module has a **smali** file at the matching path under
+   `app/src/main/smali/` (sample: `com/example/targetapp/util/Greeter.smali`).
+3. At build time the `assembleSmali` Gradle task assembles all smali into
+   `assets/replacements.dex` (smali 3.0.9, API 27).
+4. When the target app starts, `MainHook` hooks `ClassLoader.loadClass(String)`. Requests for a
+   replaced name on the app's class loader are answered from that dex through a child-first
+   `InMemoryDexClassLoader`, which still resolves every other class from the app.
 
-The replacement must keep the public API the app calls (method names, signatures, return types).
+The replacement must keep every public member the app uses (names, descriptors, access flags).
 Classes the app loaded before the hook ran cannot be swapped.
 
 ## Use it on your own app
 
 1. Edit `app/src/main/java/com/hajs/testmodule/ModuleConfig.java` (`TARGET_PACKAGE`, `REPLACED_CLASSES`).
 2. Update `app/src/main/res/values/arrays.xml` with the same package (recommended scope).
-3. Replace `app/src/main/java/com/example/targetapp/util/Greeter.java` with your replacement class
-   (same package and class name as the original).
+3. Replace `Greeter.smali` with your class, at `app/src/main/smali/<package path>/<Class>.smali`.
+   Tip: get the original smali with `apktool d target.apk` and edit it.
 4. Build, install, enable the module in LSPosed, tick the target app in its scope, force-stop the app.
 
 ```bash

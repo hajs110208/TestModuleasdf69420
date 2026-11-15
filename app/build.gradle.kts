@@ -56,7 +56,38 @@ android {
     }
 }
 
+// ---- smali -> dex -------------------------------------------------------------------------
+// Replacement classes live as smali in src/main/smali. They are assembled into a single dex
+// that is packaged as assets/replacements.dex and loaded at runtime by ClassReplacer.
+val smaliTool: Configuration by configurations.creating
+
+val smaliSrcDir = layout.projectDirectory.dir("src/main/smali")
+val smaliAssetsDir = layout.buildDirectory.dir("generated/smali-assets")
+
+val assembleSmali by tasks.registering(JavaExec::class) {
+    description = "Assembles src/main/smali into assets/replacements.dex"
+    inputs.dir(smaliSrcDir)
+    outputs.dir(smaliAssetsDir)
+    classpath = smaliTool
+    mainClass.set("com.android.tools.smali.smali.Main")
+    doFirst {
+        smaliAssetsDir.get().asFile.mkdirs()
+        args(
+            "assemble",
+            "--api", "27",
+            "--output", smaliAssetsDir.get().file("replacements.dex").asFile.absolutePath,
+            smaliSrcDir.asFile.absolutePath,
+        )
+    }
+}
+
+android.sourceSets.getByName("main").assets.srcDir(smaliAssetsDir)
+tasks.named("preBuild") { dependsOn(assembleSmali) }
+
 dependencies {
     // Provided by the Xposed/LSPosed framework at runtime.
     compileOnly("de.robv.android.xposed:api:82")
+
+    // Build-time only: smali assembler.
+    smaliTool("com.android.tools.smali:smali:3.0.9")
 }
