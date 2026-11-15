@@ -1,0 +1,42 @@
+name: Open PR dev -> main
+
+on:
+  push:
+    branches: [dev]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: dev-to-main-pr
+  cancel-in-progress: false
+
+jobs:
+  open-pr:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create PR to main if none is open
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          existing=$(gh pr list --head dev --base main --state open --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            echo "PR #$existing is already open; it picks up the new commit automatically."
+            exit 0
+          fi
+
+          ahead=$(gh api "repos/$GH_REPO/compare/main...dev" --jq '.ahead_by')
+          if [ "$ahead" = "0" ]; then
+            echo "dev has no commits that main lacks; nothing to open."
+            exit 0
+          fi
+
+          gh pr create \
+            --head dev \
+            --base main \
+            --title "Merge dev into main" \
+            --body "Automated PR created from \`dev\` after push ${{ github.sha }}.
+
+          Latest commit: ${{ github.event.head_commit.url }}"
