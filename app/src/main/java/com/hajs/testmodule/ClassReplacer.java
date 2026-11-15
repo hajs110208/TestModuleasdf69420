@@ -19,7 +19,7 @@ import de.robv.android.xposed.XposedHelpers;
  *
  * <p>The module's smali sources (app/src/main/smali) are assembled at build time into
  * {@code assets/replacements.dex}. At runtime that dex is read out of the module APK and
- * loaded by a {@link ReplacementClassLoader}, which is "child-first" for the replaced class
+ * loaded by an {@link InMemoryDexClassLoader}, which is "child-first" for the replaced class
  * names and delegates everything else to the app's class loader, so replacement code can
  * still reference the app's other classes. {@code ClassLoader.loadClass(String)} is hooked so
  * that when the app's loader is asked for a replaced name, the smali version is returned.
@@ -44,9 +44,10 @@ final class ClassReplacer {
     }
 
     void install(final ClassLoader appLoader) {
-        final ReplacementClassLoader replacement;
+        final InMemoryDexClassLoader replacement;
         try {
-            replacement = new ReplacementClassLoader(readDex(), appLoader, replaced);
+            replacement = new InMemoryDexClassLoader(
+                    readDex(), new FilteringParent(appLoader, replaced));
         } catch (Throwable t) {
             XposedBridge.log(TAG + "cannot load " + DEX_ENTRY + " from module: " + t);
             return;
@@ -61,7 +62,7 @@ final class ClassReplacer {
                             return;
                         }
                         String name = (String) param.args[0];
-                        if (!ReplacementClassLoader.isOwned(replaced, name)) {
+                        if (!isOwned(replaced, name)) {
                             return;
                         }
                         try {
@@ -96,40 +97,35 @@ final class ClassReplacer {
         }
     }
 
-    /** Loads replaced classes from the smali dex, everything else from the app. */
-    static final class ReplacementClassLoader extends InMemoryDexClassLoader {
+    static boolean isOwned(Set<String> replaced, String name) {
+        if (replaced.contains(name)) {
+            return true;
+        }
+        int dollar = name.indexOf('$');
+        return dollar > 0 && replaced.contains(name.substring(0, dollar));
+    }
+
+    /**
+     * Parent of the dex loader. InMemoryDexClassLoader is final and parent-first, so to make it
+     * "child-first" for the replaced names this loader refuses to find them (the dex loader then
+     * falls back to its own dex) and hands every other name to the app's loader.
+     */
+    static final class FilteringParent extends ClassLoader {
 
         private final Set<String> replaced;
 
-        ReplacementClassLoader(ByteBuffer dex, ClassLoader appLoader, Set<String> replaced) {
-            super(dex, appLoader);
+        FilteringParent(ClassLoader appLoader, Set<String> replaced) {
+            super(appLoader);
             this.replaced = replaced;
-        }
-
-        static boolean isOwned(Set<String> replaced, String name) {
-            if (replaced.contains(name)) {
-                return true;
-            }
-            int dollar = name.indexOf('$');
-            return dollar > 0 && replaced.contains(name.substring(0, dollar));
         }
 
         @Override
         protected Class<?> loadClass(String name, boolean resolve)
                 throws ClassNotFoundException {
-            if (!isOwned(replaced, name)) {
-                return super.loadClass(name, resolve);
+            if (isOwned(replaced, name)) {
+                throw new ClassNotFoundException(name);
             }
-            synchronized (getClassLoadingLock(name)) {
-                Class<?> c = findLoadedClass(name);
-                if (c == null) {
-                    c = findClass(name); // smali dex only, bypassing the parent
-                }
-                if (resolve) {
-                    resolveClass(c);
-                }
-                return c;
-            }
+            return super.loadClass(name, resolve);
         }
     }
 }
