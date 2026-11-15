@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Keep in sync with ModuleConfig.TARGET_PACKAGE. -->
+    <string-array name="xposed_scope">
+        <item>com.example.targetapp</item>
+    </string-array>
+</resources>

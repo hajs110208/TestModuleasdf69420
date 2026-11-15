@@ -1,0 +1,36 @@
+{
+  "branches": [
+    "main",
+    { "name": "dev", "prerelease": "beta", "channel": "beta" }
+  ],
+  "tagFormat": "v${version}",
+  "plugins": [
+    ["@semantic-release/commit-analyzer", { "preset": "conventionalcommits" }],
+    ["@semantic-release/release-notes-generator", { "preset": "conventionalcommits" }],
+    ["@semantic-release/changelog", { "changelogFile": "CHANGELOG.md" }],
+    [
+      "@semantic-release/exec",
+      {
+        "prepareCmd": "bash scripts/set-version.sh ${nextRelease.version} && gradle --no-daemon :app:assembleRelease && bash scripts/collect-apk.sh ${nextRelease.version}"
+      }
+    ],
+    [
+      "@semantic-release/git",
+      {
+        "assets": ["CHANGELOG.md", "version.properties"],
+        "message": "chore(release): ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}"
+      }
+    ],
+    [
+      "@semantic-release/github",
+      {
+        "assets": [
+          {
+            "path": "dist/TestModule-*.apk",
+            "label": "LSPosed module APK (${nextRelease.gitTag})"
+          }
+        ]
+      }
+    ]
+  ]
+}
